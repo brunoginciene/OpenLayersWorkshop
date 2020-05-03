@@ -2,23 +2,26 @@ import 'ol/ol.css';
 import {Map, View} from 'ol';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
-import XYZSource from 'ol/source/XYZ';
+import OSMSource from 'ol/source/OSM';
 import VectorSource from 'ol/source/Vector';
 import {fromLonLat} from 'ol/proj';
 import {GeoJSON, KML} from 'ol/format';
 import sync from 'ol-hashed';
 import {DragAndDrop, Modify, Draw, Snap} from 'ol/interaction';
-import {Style, Fill, Stroke} from 'ol/style';
+import {Style, Fill, Stroke, Icon} from 'ol/style';
 import {getArea} from 'ol/sphere';
 import colormap from 'colormap';
+import Feature from 'ol/Feature';
+import {circular} from 'ol/geom/Polygon';
+import Point from 'ol/geom/Point';
+import Control from 'ol/control/Control';
+import Kompas from 'kompas';
 
 const map = new Map({
   target: 'map-container',
   layers: [
     new TileLayer({
-      source: new XYZSource({
-        url: 'http://tile.stamen.com/terrain/{z}/{x}/{y}.jpg'
-      })
+      source: new OSMSource()
     })
   ],
   view: new View({
@@ -100,6 +103,64 @@ function getColor(feature) {
   const index = Math.round(f * (steps - 1));
   return ramp[index];
 }
+
+const sourcePontoGeo = new VectorSource()
+
+const layerPontoGeo = new VectorLayer({
+    source: sourcePontoGeo
+})
+
+map.addLayer(layerPontoGeo)
+
+navigator.geolocation.watchPosition(function(pos){
+    const coords = [pos.coords.longitude, pos.coords.latitude]
+    const accuracy = circular(coords, pos.coords.accuracy)
+    sourcePontoGeo.clear(true)
+    sourcePontoGeo.addFeatures([
+        new Feature(accuracy.transform('EPSG:4326', map.getView().getProjection())),
+        new Feature(new Point(fromLonLat(coords)))
+    ])
+}, function(error){
+    alert(`ERROR: ${error.message}`)
+}, {
+    enableHighAccuracy: true
+})
+
+const locate = document.createElement('div')
+locate.className = 'ol-control ol-unselectable locate'
+locate.innerHTML = '<button title="Locate me">◎</button>'
+locate.addEventListener('click', function(){
+    if (!sourcePontoGeo.isEmpty()){
+        map.getView().fit(sourcePontoGeo.getExtent(),{
+            maxZoom: 18,
+            duration: 500
+        })
+    }
+})
+map.addControl(new Control({
+    element: locate
+}))
+
+const style = new Style({
+    fill: new Fill({
+        color: 'rgba(0, 0, 255, 0.2)'
+    }),
+    image: new Icon({
+        src: 'data/location-heading.svg',
+        imgSize: [27, 55],
+        rotateWithView: true
+    })
+})
+layerPontoGeo.setStyle(style)
+
+const compass = new Kompas()
+compass.watch()
+compass.on('heading', function(heading){
+    style.getImage().setRotation(Math.PI / 180 * heading)
+})
+
+
+
 
 
 
